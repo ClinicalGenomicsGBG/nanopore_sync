@@ -107,7 +107,7 @@ class NanoporeCompletionEventHandler(AsyncEventHandler):
         self._observer.stop()
         self._observer.join()
 
-        sync_run(self.path)
+        await self._loop.run_in_executor(None, sync_run, self.path)
 
 
 def watch_new_runs():

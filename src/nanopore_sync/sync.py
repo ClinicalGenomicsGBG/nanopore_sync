@@ -34,7 +34,8 @@ def sync_run(source: Path) -> None:
     source = Path(source)
 
     try:
-        copytree(source, destination / source.name)
+        LOGGER.info(f"Syncing run '{source.name}' to '{destination}'...")
+        copytree(source, destination / source.name)# Ensure the copy operation is complete before proceeding
     except FileExistsError:
         LOGGER.warning(f"Run '{source.name}' already exists in '{destination}'.")
         return
