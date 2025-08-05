@@ -42,7 +42,7 @@ class Config(BaseModel):
         description="Regex pattern to match nanopore run names",
     )
     completion_signal_pattern: str = Field(
-        r".*/final_summary\.txt$",
+        r".*/final_summary.*\.txt$",
         description="Regex pattern to match the completion signal file",
     )
     verify: bool = Field(
