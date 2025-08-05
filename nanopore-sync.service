@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env python -m nanopore_sync --source /path/to/input --destination /path/to/output
+ExecStart=/usr/bin/env python path/to/nanopore-sync.py --source /path/to/input --destination /path/to/output
 Restart=always
 RestartSec=5
 
