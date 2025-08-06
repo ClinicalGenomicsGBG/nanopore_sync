@@ -1,8 +1,5 @@
 from pathlib import Path
-<<<<<<< HEAD
-=======
 import shutil
->>>>>>> Ignore permission errors from copystat
 from shutil import copytree, copy
 
 from .config import CONFIG
