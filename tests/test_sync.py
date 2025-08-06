@@ -49,10 +49,15 @@ async def test_sync(tmp_path: Path) -> None:
     _, stderr = await proc.communicate()
     logs = stderr.decode("utf-8")
 
+    # Verify that the expected run directory was detected
+    assert f"Detected new run directory: {input / '20231001_1200_run_a_12345678'}" in logs
+
+    # Verify that subdirectories are not detected as new runs
+    assert f"Detected new run directory: {input / '20231001_1200_run_a_12345678' / 'c'}" not in logs
+
+    # Verify that the run was synced successfully
     assert "Run '20231001_1200_run_a_12345678' synced successfully." in logs
-    assert (output / "20231001_1200_run_a_12345678").exists(), "Output directory does not contain the synced run."
+    assert (output / "20231001_1200_run_a_12345678").exists()
     for path in ["a.txt", "b.txt", "c/d.txt"]:
-        assert (output / "20231001_1200_run_a_12345678" / path).exists(), f"Output run does not contain {path}."
-    assert (output / "20231001_1200_run_a_12345678" / "final_summary.txt").exists(), (
-        "Output run does not contain the final summary file."
-    )
+        assert (output / "20231001_1200_run_a_12345678" / path).exists()
+    assert (output / "20231001_1200_run_a_12345678" / "final_summary.txt").exists()
