@@ -1,4 +1,5 @@
 import asyncio as aio
+from pathlib import Path
 
 from watchdog.events import (
     EVENT_TYPE_CLOSED,
@@ -98,7 +99,7 @@ class NanoporeCompletionEventHandler(AsyncEventHandler):
 
     def __init__(self, *args, observer: ObserverType, path: str, **kwargs):
         _regexes = [CONFIG.completion_signal_pattern]
-        self.path = path
+        self.path = Path(path)
         self._observer = observer
         super().__init__(*args, regexes=_regexes, **kwargs)
 

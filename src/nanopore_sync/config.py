@@ -1,11 +1,13 @@
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, DirectoryPath
+
+from pathlib import Path
 
 
 class CONFIG:
-    source: str
-    destination: str
+    source: Path
+    destination: Path
     run_name_pattern: str
     completion_signal_pattern: str
     verify: bool
@@ -27,12 +29,12 @@ class Config(BaseModel):
         validate_assignment = True
         extra = "forbid"
 
-    source: str = Field(
+    source: DirectoryPath = Field(
         ...,
         description="Path to directory containing nanopore runs",
         required=True,
     )
-    destination: str = Field(
+    destination: DirectoryPath = Field(
         ...,
         description="Path to directory where runs will be synced",
         required=True,
