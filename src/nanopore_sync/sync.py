@@ -1,5 +1,5 @@
 from pathlib import Path
-from shutil import copytree
+from shutil import copytree, copy
 
 from .config import CONFIG
 from .logging import LOGGER
@@ -35,7 +35,7 @@ def sync_run(source: Path) -> None:
 
     try:
         LOGGER.info(f"Syncing run '{source.name}' to '{destination}'...")
-        copytree(source, destination / source.name)# Ensure the copy operation is complete before proceeding
+        copytree(source, destination / source.name, copy_function=copy)
     except FileExistsError:
         LOGGER.warning(f"Run '{source.name}' already exists in '{destination}'.")
         return
