@@ -121,7 +121,7 @@ def watch_new_runs():
     observer = Observer()
     loop = aio.new_event_loop()
     handler = NanoporeRunEventHandler(loop=loop)
-    observer.schedule(handler, path=CONFIG.source, event_filter=[DirCreatedEvent])
+    observer.schedule(handler, path=CONFIG.source, event_filter=[DirCreatedEvent], recursive=True)
     try:
         observer.start()
         loop.run_until_complete(loop.run_in_executor(None, observer.join))
