@@ -1,4 +1,8 @@
 from pathlib import Path
+<<<<<<< HEAD
+=======
+import shutil
+>>>>>>> Ignore permission errors from copystat
 from shutil import copytree, copy
 
 from .config import CONFIG
@@ -32,10 +36,17 @@ def sync_run(source: Path) -> None:
     """
     destination = Path(CONFIG.destination)
     source = Path(source)
+    target = destination / source.name
 
     try:
         LOGGER.info(f"Syncing run '{source.name}' to '{destination}'...")
-        copytree(source, destination / source.name, copy_function=copy)
+        copytree(source, target, copy_function=copy)# Ensure the copy operation is complete before proceeding
+    except shutil.Error as err:
+        benign = all(e[2].startswith("[Errno 1] Operation not permitted") for e in err.args[0])
+        if benign:
+            LOGGER.debug(f"Ignore permission errors while syncing '{source.name}'")
+        else:
+            LOGGER.error(f"Unable to copy run '{source.name}': {err}")
     except FileExistsError:
         LOGGER.warning(f"Run '{source.name}' already exists in '{destination}'.")
         return
