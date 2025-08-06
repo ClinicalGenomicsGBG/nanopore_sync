@@ -1,3 +1,5 @@
+import os
+import re
 import asyncio as aio
 
 from watchdog.events import (
@@ -82,8 +84,10 @@ class NanoporeRunEventHandler(AsyncEventHandler):
         super().__init__(*args, regexes=_regexes, **kwargs)
 
     async def on_created(self, event: DirCreatedEvent):
-        watch_run_completion(event.src_path)
-        LOGGER.info(f"Detected new run: {event.src_path}")
+        run_name = os.path.basename(event.src_path)
+        if re.match(CONFIG.run_name_pattern, run_name):
+            watch_run_completion(event.src_path)
+            LOGGER.info(f"Detected new run directory: {event.src_path}")
 
 
 class NanoporeCompletionEventHandler(AsyncEventHandler):
