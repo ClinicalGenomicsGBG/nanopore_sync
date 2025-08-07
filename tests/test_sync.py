@@ -24,7 +24,7 @@ async def test_sync(tmp_path: Path) -> None:
         *("python", "-m", "nanopore_sync"),
         *("--source", str(input)),
         *("--destination", str(output)),
-        "--no-verify",
+        "--verify",
     ]
     proc = await aio.subprocess.create_subprocess_exec(
         *cmdline,
@@ -35,10 +35,10 @@ async def test_sync(tmp_path: Path) -> None:
     await aio.sleep(0.5)
     (input / "20231001_1200_run_a_12345678").mkdir()
     await aio.sleep(0.1)
-    (input / "20231001_1200_run_a_12345678" / "a.txt").touch()
-    (input / "20231001_1200_run_a_12345678" / "b.txt").touch()
+    (input / "20231001_1200_run_a_12345678" / "a.txt").write_text("SOME DATA")
+    (input / "20231001_1200_run_a_12345678" / "b.txt").write_text("SOME MORE DATA")
     (input / "20231001_1200_run_a_12345678" / "c").mkdir()
-    (input / "20231001_1200_run_a_12345678" / "c" / "d.txt").touch()
+    (input / "20231001_1200_run_a_12345678" / "c" / "d.txt").write_text("EVEN MORE DATA")
     await aio.sleep(0.1)
     (input / "20231001_1200_run_a_12345678" / "final_summary.txt").touch()
     await aio.sleep(0.1)
@@ -57,6 +57,7 @@ async def test_sync(tmp_path: Path) -> None:
 
     # Verify that the run was synced successfully
     assert "Run '20231001_1200_run_a_12345678' synced successfully." in logs
+    assert "Size missmatch for run '20231001_1200_run_a_12345678'" not in logs
     assert (output / "20231001_1200_run_a_12345678").exists()
     for path in ["a.txt", "b.txt", "c/d.txt"]:
         assert (output / "20231001_1200_run_a_12345678" / path).exists()
