@@ -1,6 +1,5 @@
 from pathlib import Path
-import shutil
-from shutil import copytree, copy
+from subprocess import run, CalledProcessError
 
 from .config import CONFIG
 from .logging import LOGGER
@@ -31,23 +30,20 @@ def sync_run(source: Path) -> None:
     Returns:
         None
     """
-    destination = Path(CONFIG.destination)
-    source = Path(source)
-    target = destination / source.name
+    destination = CONFIG.destination / source.name
+    if not destination.parent.is_dir():
+        LOGGER.error(f"Destination directory '{destination.parent}' does not exist.")
+        return
+    elif destination.exists():
+        LOGGER.warning(f"Run '{source.name}' already exists in '{destination}'.")
+        return
 
     try:
         LOGGER.info(f"Syncing run '{source.name}' to '{destination}'...")
-        copytree(source, target, copy_function=copy)# Ensure the copy operation is complete before proceeding
-    except shutil.Error as err:
-        benign = all(e[2].startswith("[Errno 1] Operation not permitted") for e in err.args[0])
-        if benign:
-            LOGGER.debug(f"Ignore permission errors while syncing '{source.name}'")
-        else:
-            LOGGER.error(f"Unable to copy run '{source.name}': {err}")
-    except FileExistsError:
-        LOGGER.warning(f"Run '{source.name}' already exists in '{destination}'.")
-        return
-    except Exception as exc:
+        # NOTE: shutil.copytree is not used here because it invokes shutil.copystat at the end,
+        # which can cause issues with file permissions and timestamps on some systems.
+        run(["cp", "-r", str(source), str(destination)], check=True)
+    except CalledProcessError as exc:
         LOGGER.error(f"Unable to copy run '{source.name}': {exc}")
         return
 
