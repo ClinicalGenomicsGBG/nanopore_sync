@@ -79,7 +79,7 @@ class NanoporeRunEventHandler(AsyncEventHandler):
         None
     """
     def __init__(self, *args, **kwargs):
-        _regexes = [f".*/{CONFIG.run_name_pattern}$"]
+        _regexes = [rf"^(?!.*\/reads\/tmp\/).*\/{CONFIG.run_name_pattern}(?:\/)?$"]
         super().__init__(*args, regexes=_regexes, **kwargs)
 
     async def on_created(self, event: DirCreatedEvent):
