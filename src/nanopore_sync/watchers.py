@@ -103,12 +103,21 @@ class NanoporeCompletionEventHandler(AsyncEventHandler):
         self._observer = observer
         super().__init__(*args, regexes=_regexes, **kwargs)
 
-    async def on_closed(self, event: FileClosedEvent):
+    async def _do_sync(self, event: FileSystemEvent):
         LOGGER.info(f"Detected completed run: {event.src_path}")
         self._observer.stop()
         self._observer.join()
 
         await self._loop.run_in_executor(None, sync_run, self.path)
+
+    async def on_closed(self, event: FileClosedEvent):
+        await self._do_sync(event)
+
+    async def on_moved(self, event: FileMovedEvent):
+        await self._do_sync(event)
+
+    async def on_any_event(self, event):
+        LOGGER.debug(f"Detected '{event.__class__.__name__}' for '{event.src_path}'")
 
 
 def watch_new_runs():
@@ -151,7 +160,7 @@ def watch_run_completion(path: str):
         observer=observer,
         path=path,
     )
-    observer.schedule(handler, path=path, event_filter=[FileClosedEvent])
+    observer.schedule(handler, path=path)
     try:
         observer.start()
         loop.call_soon_threadsafe(loop.run_in_executor, None, observer.join)
