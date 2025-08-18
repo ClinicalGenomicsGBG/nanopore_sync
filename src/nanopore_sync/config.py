@@ -1,6 +1,7 @@
 
 
 from pydantic import BaseModel, Field, DirectoryPath
+from typing import Literal
 
 from pathlib import Path
 
@@ -40,7 +41,7 @@ class Config(BaseModel):
         required=True,
     )
     run_name_pattern: str = Field(
-        r"[0-9]{8}_[0-9]{4}_[^_]+_[^_]+_[a-f0-9]{8}",
+        r"(?<!/reads/tmp/)[0-9]{8}_[0-9]{4}_[^_]+_[^_]+_[a-f0-9]{8}",
         description="Regex pattern to match nanopore run names",
     )
     completion_signal_pattern: str = Field(

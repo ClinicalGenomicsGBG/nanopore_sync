@@ -47,7 +47,7 @@ def sync_run(source: Path) -> None:
         LOGGER.error(f"Unable to copy run '{source.name}': {exc}")
         return
 
-    if CONFIG.verify and (_ssize := _dir_size(source)) != (_dsize := _dir_size(destination / source.name)):
+    if CONFIG.verify and (_ssize := _dir_size(source)) != (_dsize := _dir_size(destination)):
         LOGGER.warning(f"Size mismatch for run '{source.name}': source size {_ssize}, destination size {_dsize}.")
         return
 
