@@ -1,9 +1,8 @@
 
 
-from pydantic import BaseModel, Field, DirectoryPath
-from typing import Literal
-
 from pathlib import Path
+
+from pydantic import BaseModel, DirectoryPath, Field
 
 
 class CONFIG:
@@ -45,8 +44,8 @@ class Config(BaseModel):
         description="Regex pattern to match nanopore run names",
     )
     completion_signal_pattern: str = Field(
-        r".*/final_summary.*\.txt$",
-        description="Regex pattern to match the completion signal file",
+        r"final_summary.*\.txt",
+        description="Regex pattern to match a file indicating run completion",
     )
     verify: bool = Field(
         True,

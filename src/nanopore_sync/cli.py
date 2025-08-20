@@ -1,5 +1,7 @@
 import rich_click as click
+import asyncio as aio
 from pydanclick import from_pydantic
+from signal import SIGINT, SIGTERM
 
 from .config import Config, set_global_config
 from .watchers import watch_new_runs
@@ -27,4 +29,10 @@ def main(config: Config, log_level: str) -> None:
     """
     set_global_config(config)
     LOGGER.setLevel(log_level)
-    watch_new_runs()
+    LOGGER.info("Watching for new nanopore runs")
+    loop = aio.get_event_loop()
+    task = aio.ensure_future(watch_new_runs())
+    for sig in (SIGINT, SIGTERM):
+        loop.add_signal_handler(sig, task.cancel)
+    loop.run_until_complete(task)
+    loop.close()

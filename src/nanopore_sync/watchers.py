@@ -1,4 +1,7 @@
+
 import asyncio as aio
+import re
+from functools import cache
 from pathlib import Path
 
 from watchdog.events import (
@@ -11,6 +14,7 @@ from watchdog.events import (
     EVENT_TYPE_OPENED,
     DirCreatedEvent,
     DirDeletedEvent,
+    DirModifiedEvent,
     DirMovedEvent,
     FileClosedEvent,
     FileClosedNoWriteEvent,
@@ -22,11 +26,18 @@ from watchdog.events import (
     FileSystemEvent,
     RegexMatchingEventHandler,
 )
-from watchdog.observers import Observer, ObserverType
+from watchdog.observers import Observer
 
 from .config import CONFIG
 from .logging import LOGGER
 from .sync import sync_run
+
+
+@cache
+def _extract_run_name(path: str) -> str | None:
+    if (match := re.search(CONFIG.run_name_pattern, path)) is None:
+        return None
+    return match.group(0)
 
 
 class AsyncEventHandler(RegexMatchingEventHandler):
@@ -38,15 +49,32 @@ class AsyncEventHandler(RegexMatchingEventHandler):
         loop (aio.BaseEventLoop): The asyncio event loop to use for scheduling event callbacks.
     """
 
-    def __init__(self, *args, loop: aio.BaseEventLoop, **kwargs):
-        self._loop = loop
+    def __init__(self, *args, **kwargs):
+        self._loop = aio.get_event_loop()
+        self._tasks = []
         super().__init__(*args, **kwargs)
+
+    def _create_task(self, coro):
+        task = self._loop.create_task(coro)
+        self._tasks.append(task)
+        task.add_done_callback(self._tasks.remove)
+        return task
+
+    def cancel_tasks(self):
+        """
+        Cancels all currently running tasks in the event handler.
+        This is useful for cleanup when stopping the observer.
+        """
+        for task in self._tasks:
+            LOGGER.debug(f"Cancelling task: {task}")
+            task.cancel()
+        self._tasks.clear()
 
     async def on_any_event(self, event: FileSystemEvent): ...
     async def on_moved(self, event: FileMovedEvent | DirMovedEvent): ...
     async def on_created(self, event: FileCreatedEvent | DirCreatedEvent): ...
     async def on_deleted(self, event: FileDeletedEvent | DirDeletedEvent): ...
-    async def on_modified(self, event: FileModifiedEvent): ...
+    async def on_modified(self, event: FileModifiedEvent | DirModifiedEvent): ...
     async def on_closed(self, event: FileClosedEvent): ...
     async def on_closed_no_write(self, event: FileClosedNoWriteEvent): ...
     async def on_opened(self, event: FileOpenedEvent): ...
@@ -66,104 +94,95 @@ class AsyncEventHandler(RegexMatchingEventHandler):
             )
         ):
             method = object.__getattribute__(self, name)
-            return lambda event: self._loop.call_soon_threadsafe(self._loop.create_task, method(event))
+            return lambda event: self._loop.call_soon_threadsafe(self._create_task, method(event))
         return super().__getattribute__(name)
 
 
-class NanoporeRunEventHandler(AsyncEventHandler):
-    """
-    Handles creation events for new nanopore run directories.
-    Watches for new run directories and initiates completion monitoring when detected.
+class RunDirectoryHandler(AsyncEventHandler):
+    _new_run: aio.Condition
+    _run_completion: dict[str, aio.Condition]
+    _run_modified: dict[str, aio.Condition]
 
-    Returns:
-        None
-    """
-    def __init__(self, *args, **kwargs):
-        _regexes = [f".*/{CONFIG.run_name_pattern}$"]
-        super().__init__(*args, regexes=_regexes, **kwargs)
+    def __init__(self, new_run_condition: aio.Condition, run_completion_conditions: dict[str, aio.Condition]):
+        self._new_run = new_run_condition
+        self._run_completion = run_completion_conditions
+        self._run_modified = {}
+        super().__init__(regexes=[f".*/{CONFIG.run_name_pattern}$"])
+
+    async def _do_sync(self, path: str):
+        if (run_name := _extract_run_name(path)) is None:
+            return
+        LOGGER.info(f"Detected new run: '{run_name}'")
+        self._run_completion[run_name] = aio.Condition()
+        self._run_modified[run_name] = aio.Condition()
+        async with self._new_run:
+            self._new_run.notify_all()
+        async with self._run_completion[run_name]:
+            await self._run_completion[run_name].wait()
+
+        LOGGER.info(f"Run completion detected for '{run_name}'")
+        await self._loop.run_in_executor(None, sync_run, Path(path))
+
+    async def on_any_event(self, event: FileSystemEvent):
+        LOGGER.debug(f"RunDirectoryHandler received event: {event.event_type} on {event.src_path}")
+
+    async def on_moved(self, event: DirMovedEvent):
+        await self._do_sync(event.dest_path)
 
     async def on_created(self, event: DirCreatedEvent):
-        watch_run_completion(event.src_path)
-        LOGGER.info(f"Detected new run directory: {event.src_path}")
+        await self._do_sync(event.src_path)
 
 
-class NanoporeCompletionEventHandler(AsyncEventHandler):
-    """
-    Handles completion events for nanopore sequencing runs.
-    Watches for file closed events matching the completion signal and triggers synchronization when detected.
 
-    Args:
-        observer (ObserverType): The observer instance managing this handler.
-        path (str): The path to the run directory being watched.
-    """
+class RunCompletionHandler(AsyncEventHandler):
+    _new_run: aio.Condition
+    _run_completion: dict[str, aio.Condition]
 
-    def __init__(self, *args, observer: ObserverType, path: str, **kwargs):
-        _regexes = [CONFIG.completion_signal_pattern]
-        self.path = Path(path)
-        self._observer = observer
-        super().__init__(*args, regexes=_regexes, **kwargs)
+    def __init__(self, new_run_condition: aio.Condition, run_completion_conditions: dict[str, aio.Condition]):
+        self._new_run = new_run_condition
+        self._run_completion = run_completion_conditions
+        super().__init__(regexes=[f".*/{CONFIG.run_name_pattern}/{CONFIG.completion_signal_pattern}$"])
 
-    async def _do_sync(self, event: FileSystemEvent):
-        LOGGER.info(f"Detected completed run: {event.src_path}")
-        self._observer.stop()
-        self._observer.join()
+    async def _check_completion(self, path: str):
+        if (run_name := _extract_run_name(path)) is None:
+            return
 
-        await self._loop.run_in_executor(None, sync_run, self.path)
+        async with self._new_run:
+            await self._new_run.wait_for(lambda: run_name in self._run_completion)
 
-    async def on_closed(self, event: FileClosedEvent):
-        await self._do_sync(event)
+        async with self._run_completion[run_name]:
+            self._run_completion[run_name].notify_all()
+
+
+    async def on_any_event(self, event: FileSystemEvent):
+        LOGGER.debug(f"RunCompletionHandler received event: {event.event_type} on {event.src_path}")
 
     async def on_moved(self, event: FileMovedEvent):
-        await self._do_sync(event)
+        await self._check_completion(event.dest_path)
 
-    async def on_any_event(self, event):
-        LOGGER.debug(f"Detected '{event.__class__.__name__}' for '{event.src_path}'")
+    async def on_created(self, event: FileCreatedEvent):
+        await self._check_completion(event.src_path)
 
+    async def on_closed(self, event: FileClosedEvent):
+        await self._check_completion(event.src_path)
 
-def watch_new_runs():
-    """
-    Watches the configured source directory for new nanopore run directories.
-    Sets up an observer and event handler to detect and process new sequencing runs as they appear.
-
-    Returns:
-        None
-    """
+async def watch_new_runs() -> None:
     observer = Observer()
-    loop = aio.new_event_loop()
-    handler = NanoporeRunEventHandler(loop=loop)
-    observer.schedule(handler, path=CONFIG.source, event_filter=[DirCreatedEvent], recursive=True)
-    try:
-        observer.start()
-        loop.run_until_complete(loop.run_in_executor(None, observer.join))
-    except KeyboardInterrupt:
-        observer.stop()
-        observer.join()
-    finally:
-        loop.close()
+    new_run_condition = aio.Condition()
+    run_completion_conditions = {}
 
+    run_directory_handler = RunDirectoryHandler(new_run_condition, run_completion_conditions)
+    run_completion_handler = RunCompletionHandler(new_run_condition, run_completion_conditions)
+    observer.schedule(run_directory_handler, path=CONFIG.source, event_filter=[DirCreatedEvent, DirMovedEvent], recursive=True)
+    observer.schedule(run_completion_handler, path=CONFIG.source, event_filter=[FileClosedEvent, FileMovedEvent, FileCreatedEvent], recursive=True)
 
-def watch_run_completion(path: str):
-    """
-    Watches a specific run directory for completion signals indicating the run has finished.
-    Sets up an observer and event handler to detect completion events and trigger synchronization.
-
-    Args:
-        path (str): The path to the run directory to watch for completion.
-
-    Returns:
-        None
-    """
-    observer = Observer()
     loop = aio.get_running_loop()
-    handler = NanoporeCompletionEventHandler(
-        loop=loop,
-        observer=observer,
-        path=path,
-    )
-    observer.schedule(handler, path=path)
+    observer.start()
     try:
-        observer.start()
-        loop.call_soon_threadsafe(loop.run_in_executor, None, observer.join)
-    except KeyboardInterrupt:
+        await loop.run_in_executor(None, observer.join)
+    except aio.CancelledError:
+        LOGGER.info("Interrupted, stop watching for new runs")
         observer.stop()
-        observer.join()
+        await loop.run_in_executor(None, observer.join)
+        run_completion_handler.cancel_tasks()
+        run_directory_handler.cancel_tasks()
