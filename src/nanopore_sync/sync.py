@@ -1,5 +1,5 @@
 from pathlib import Path
-from subprocess import run, CalledProcessError
+from subprocess import CalledProcessError, run
 
 from .config import CONFIG
 from .logging import LOGGER
@@ -39,7 +39,7 @@ def sync_run(source: Path) -> None:
         return
 
     try:
-        LOGGER.info(f"Syncing run '{source.name}' to '{destination}'...")
+        LOGGER.info(f"Syncing run '{source.name}' to '{destination}'")
         # NOTE: shutil.copytree is not used here because it invokes shutil.copystat at the end,
         # which can cause issues with file permissions and timestamps on some systems.
         run(["cp", "-r", str(source), str(destination)], check=True)
@@ -51,4 +51,5 @@ def sync_run(source: Path) -> None:
         LOGGER.warning(f"Size mismatch for run '{source.name}': source size {_ssize}, destination size {_dsize}.")
         return
 
+    (destination / "copy_complete.txt").touch()
     LOGGER.info(f"Run '{source.name}' synced successfully.")
