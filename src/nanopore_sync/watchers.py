@@ -121,6 +121,8 @@ class RunDirectoryHandler(AsyncEventHandler):
             await self._run_completion[run_name].wait()
 
         LOGGER.info(f"Run completion detected for '{run_name}'")
+        LOGGER.infog(f"Waiting {CONFIG.completion_delay} seconds before syncing run '{run_name}'")
+        await aio.sleep(CONFIG.completion_delay)
         await self._loop.run_in_executor(None, sync_run, Path(path))
 
     async def on_any_event(self, event: FileSystemEvent):

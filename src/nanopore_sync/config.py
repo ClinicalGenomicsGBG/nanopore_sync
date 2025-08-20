@@ -10,6 +10,7 @@ class CONFIG:
     destination: Path
     run_name_pattern: str
     completion_signal_pattern: str
+    completion_delay: float
     verify: bool
 
 
@@ -23,6 +24,7 @@ class Config(BaseModel):
         destination (str): Path to directory where runs will be synced.
         run_name_pattern (str): Regex pattern to match nanopore run names.
         completion_signal_pattern (str): Regex pattern to match the completion signal file.
+        completion_delay (float): Delay (in seconds) to wait before notifying run completion.
         verify (bool): Checks the total directory size after copy.
     """
     class Config:
@@ -47,6 +49,10 @@ class Config(BaseModel):
         r"final_summary.*\.txt",
         description="Regex pattern to match a file indicating run completion",
     )
+    completion_delay: float = Field(
+        10.0,
+        description="Delay (in seconds) to wait before notifying run completion",
+    )
     verify: bool = Field(
         True,
         description="Checks the total directory size after copy",
@@ -69,4 +75,5 @@ def set_global_config(config: "Config"):
     CONFIG.destination = config.destination
     CONFIG.run_name_pattern = config.run_name_pattern
     CONFIG.completion_signal_pattern = config.completion_signal_pattern
+    CONFIG.completion_delay = config.completion_delay
     CONFIG.verify = config.verify
